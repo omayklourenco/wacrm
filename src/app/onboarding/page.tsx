@@ -13,8 +13,7 @@
 // is disabled while the request is in flight.
 // ============================================================
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Building2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
 export default function OnboardingPage() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +55,7 @@ export default function OnboardingPage() {
   }, []);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       if (submitting) return;
       setSubmitting(true);

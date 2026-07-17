@@ -48,9 +48,13 @@ describe("Ciclo 000-R — token encryption", () => {
 
   it("fails closed on tampered ciphertext", () => {
     const enc = encrypt("secret");
-    const parts = enc.split(":");
-    parts[1] = parts[1].replace(/0/g, "1").replace(/1/g, "0");
-    expect(() => decrypt(parts.join(":"))).toThrow();
+    const [iv, ct, tag] = enc.split(":");
+    // Deterministic single-nibble flip — the previous 0↔1 swap was a
+    // no-op whenever the ciphertext hex lacked a '1', which made this
+    // assertion flake on CI.
+    const flipped =
+      (parseInt(ct[0], 16) ^ 0x1).toString(16) + ct.slice(1);
+    expect(() => decrypt(`${iv}:${flipped}:${tag}`)).toThrow();
   });
 });
 
