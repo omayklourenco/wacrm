@@ -1,73 +1,72 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAccountContext, toErrorResponse } from '@/lib/auth/account'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  assertSafeMediaId,
+  mediaProxyPath,
+} from '@/lib/whatsapp/media-access'
 
+/**
+ * Authenticated media proxy — Ciclo 001-R.
+ *
+ * Access requires:
+ *   1. signed-in membership (any role),
+ *   2. a messages.media_url in the caller's account that references
+ *      this Meta media id via our proxy path,
+ *   3. WhatsApp config for that same account.
+ *
+ * Media IDs alone are never enough — knowing a Meta media id must not
+ * let a user pull media from another tenant's WABA token.
+ */
 export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ mediaId: string }> }
+  _request: Request,
+  { params }: { params: Promise<{ mediaId: string }> },
 ) {
   try {
     const { mediaId } = await params
 
-    if (!mediaId) {
-      return NextResponse.json(
-        { error: 'Media ID is required' },
-        { status: 400 }
-      )
+    if (!mediaId || !assertSafeMediaId(mediaId)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const supabase = await createClient()
+    const ctx = await requireAccountContext()
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const proxyPath = mediaProxyPath(mediaId)
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Resolve the caller's account_id — whatsapp_config is one-per-
-    // account post-multi-user, so a teammate fetching media for a
-    // conversation in the shared inbox needs the account's config,
-    // not their personal (non-existent) row.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id')
-      .eq('user_id', user.id)
+    // Bind media → message → conversation → account (caller).
+    const { data: owned, error: ownedErr } = await ctx.supabase
+      .from('messages')
+      .select('id, conversation_id, conversations!inner(account_id)')
+      .eq('media_url', proxyPath)
+      .eq('conversations.account_id', ctx.accountId)
+      .limit(1)
       .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
+
+    if (ownedErr) {
+      console.error('[media proxy] ownership lookup failed')
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    if (!owned) {
+      // Generic 404 — do not reveal whether the media exists elsewhere.
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    // Fetch and decrypt WhatsApp config
-    const { data: config, error: configError } = await supabase
+    const { data: config, error: configError } = await ctx.supabase
       .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
+      .select('access_token')
+      .eq('account_id', ctx.accountId)
+      .maybeSingle()
 
-    if (configError || !config) {
+    if (configError || !config?.access_token) {
       return NextResponse.json(
         { error: 'WhatsApp not configured' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     const accessToken = decrypt(config.access_token)
-
-    // Get the download URL from Meta
     const mediaInfo = await getMediaUrl({ mediaId, accessToken })
-
-    // Download the binary data
     const { buffer, contentType } = await downloadMedia({
       downloadUrl: mediaInfo.url,
       accessToken,
@@ -76,15 +75,12 @@ export async function GET(
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        'Content-Type': contentType || mediaInfo.mimeType || 'application/octet-stream',
-        'Cache-Control': 'public, max-age=86400',
+        'Content-Type':
+          contentType || mediaInfo.mimeType || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=3600',
       },
     })
   } catch (error) {
-    console.error('Error in WhatsApp media GET:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch media' },
-      { status: 500 }
-    )
+    return toErrorResponse(error)
   }
 }

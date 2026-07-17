@@ -9,6 +9,20 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [Unreleased] — Oslou Flow Ciclo 001-R
+
+Security hardening for multi-tenant isolation (Oslou Flow adoption).
+
+> **Migration required:** apply `supabase/migrations/037_multitenancy_service_role_hardening.sql`
+
+### Security
+
+- Meta webhook status updates are scoped by WhatsApp `phone_number_id` → account (no bare `message_id` writes across tenants).
+- Media proxy requires an in-account message binding before fetching Meta media.
+- Signup bootstrap (`handle_new_user`) no longer swallows errors (prevents orphan auth users).
+- Invite URLs reject untrusted `Host` / `X-Forwarded-Host` unless allow-listed (`ALLOWED_APP_ORIGINS` / `NEXT_PUBLIC_SITE_URL`).
+- Tightened `SECURITY DEFINER` EXECUTE grants; restored PostgREST DML grants for `authenticated` / `service_role` on public tables.
+
 ## [0.8.1] — 2026-07-10
 
 Fixes inbound chats fragmenting into multiple threads for the same

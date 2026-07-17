@@ -94,6 +94,7 @@ describe("getCurrentAccount", () => {
       userId: "user-1",
       accountId: "acct-1",
       role: "owner",
+      membershipId: "user-1",
       account: { id: "acct-1", name: "Acme" },
     });
 

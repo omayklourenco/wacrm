@@ -87,6 +87,12 @@ export interface AccountContext {
   accountId: string;
   /** Caller's role within their account. */
   role: AccountRole;
+  /**
+   * Membership surrogate until a real `account_members` table exists
+   * (Ciclo 001-R / ADR-0002). Today membership == profile row, so the
+   * stable id is `userId` within `accountId`.
+   */
+  membershipId: string;
   /** Lightweight account meta — id + name. */
   account: { id: string; name: string };
 }
@@ -168,8 +174,41 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     userId: user.id,
     accountId: data.account_id,
     role: data.account_role,
+    membershipId: user.id,
     account: { id: account.id, name: account.name },
   };
+}
+
+export interface RequireAccountContextOptions {
+  /**
+   * Optional account id from body/query/path. NEVER trusted alone —
+   * must equal the session membership account or the request is denied
+   * with a generic Forbidden (no existence leak).
+   */
+  requestedAccountId?: string | null;
+  /** Minimum role required. Defaults to viewer (any member). */
+  allowedRoles?: AccountRole;
+}
+
+/**
+ * Ciclo 001-R — central account context gate for privileged routes.
+ *
+ * - User comes from the authenticated session.
+ * - Account comes from membership (profiles), never from the client alone.
+ * - requestedAccountId is validated against membership when present.
+ */
+export async function requireAccountContext(
+  options: RequireAccountContextOptions = {},
+): Promise<AccountContext> {
+  const ctx = options.allowedRoles
+    ? await requireRole(options.allowedRoles)
+    : await getCurrentAccount();
+
+  const requested = options.requestedAccountId?.trim();
+  if (requested && requested !== ctx.accountId) {
+    throw new ForbiddenError("Forbidden");
+  }
+  return ctx;
 }
 
 /**
