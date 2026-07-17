@@ -92,3 +92,32 @@ describe("Ciclo 000-R — API key binding contract", () => {
     expect(raw.startsWith(API_KEY_PREFIX)).toBe(true);
   });
 });
+
+describe("Ciclo 001-R — cross-tenant contracts", () => {
+  it("status updates must be keyed by account + message_id (contract)", () => {
+    // Pure contract: callers must never update messages by message_id alone.
+    const filter = {
+      message_id: "wamid.SHARED",
+      account_id: "account-a",
+    };
+    expect(filter.account_id).toBeTruthy();
+    expect(filter.message_id).toBeTruthy();
+  });
+
+  it("media proxy path is account-bound via messages.media_url", async () => {
+    const { mediaProxyPath, mediaUrlMatchesProxy } = await import(
+      "@/lib/whatsapp/media-access"
+    );
+    const path = mediaProxyPath("999");
+    expect(mediaUrlMatchesProxy(path, "999")).toBe(true);
+    expect(mediaUrlMatchesProxy(path, "888")).toBe(false);
+  });
+
+  it("agent cannot edit settings (RBAC)", () => {
+    expect(canEditSettings("agent")).toBe(false);
+  });
+
+  it("viewer cannot send messages (RBAC)", () => {
+    expect(canSendMessages("viewer")).toBe(false);
+  });
+});

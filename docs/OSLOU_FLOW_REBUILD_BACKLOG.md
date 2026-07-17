@@ -84,4 +84,6 @@
 
 ## Próximo ciclo recomendado
 
-**001-R — Blindagem multiempresa e isolamento service-role**
+**002-R — Onboarding SaaS e organizações (membership N:N)** — ver ADR-0002.
+
+Status 001-R: concluído em `security/multitenancy-hardening-cycle-001-r` (ver `OSLOU_FLOW_CYCLE_001_R_MULTITENANCY_HARDENING_RESULTS.md`).
