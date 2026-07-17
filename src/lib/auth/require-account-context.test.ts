@@ -1,50 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-interface BuilderCall {
-  table: string;
-  columns?: string;
-  eqArgs: [string, unknown][];
-}
+// requireAccountContext gates privileged routes: it resolves the
+// active account and validates any requestedAccountId against it.
 
 function makeClient(opts: {
   user: { id: string } | null;
-  userErr?: unknown;
-  byTable: Record<string, { data: unknown; error: unknown }>;
+  accounts?: { data: unknown; error: unknown };
 }) {
-  const calls: BuilderCall[] = [];
-
-  const from = (table: string) => {
-    const call: BuilderCall = { table, eqArgs: [] };
-    calls.push(call);
-    const builder = {
-      select(columns: string) {
-        call.columns = columns;
-        return builder;
-      },
-      eq(col: string, val: unknown) {
-        call.eqArgs.push([col, val]);
-        return builder;
-      },
-      maybeSingle() {
-        return Promise.resolve(
-          opts.byTable[table] ?? { data: null, error: null },
-        );
-      },
-    };
-    return builder;
+  const rpc = (fn: string) => {
+    if (fn === "get_user_accounts") {
+      return Promise.resolve(opts.accounts ?? { data: [], error: null });
+    }
+    return Promise.resolve({ data: null, error: null });
   };
-
   return {
-    calls,
     client: {
       auth: {
         getUser: () =>
-          Promise.resolve({
-            data: { user: opts.user },
-            error: opts.userErr ?? null,
-          }),
+          Promise.resolve({ data: { user: opts.user }, error: null }),
       },
-      from,
+      rpc,
     },
   };
 }
@@ -54,28 +29,23 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
-const {
-  requireAccountContext,
-  UnauthorizedError,
-  ForbiddenError,
-} = await import("./account");
+const { requireAccountContext, UnauthorizedError, ForbiddenError } =
+  await import("./account");
+
+const ACTIVE_A = {
+  data: [
+    { account_id: "acct-a", name: "A", role: "admin", status: "active", is_active: true },
+  ],
+  error: null,
+};
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
 describe("requireAccountContext", () => {
-  it("rejects requestedAccountId that does not match membership", async () => {
-    const { client } = makeClient({
-      user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-a", account_role: "admin" },
-          error: null,
-        },
-        accounts: { data: { id: "acct-a", name: "A" }, error: null },
-      },
-    });
+  it("rejects requestedAccountId that does not match the active account", async () => {
+    const { client } = makeClient({ user: { id: "user-1" }, accounts: ACTIVE_A });
     createClient.mockReturnValue(client);
 
     await expect(
@@ -83,15 +53,14 @@ describe("requireAccountContext", () => {
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("accepts matching requestedAccountId", async () => {
+  it("accepts a requestedAccountId matching the active account", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-a", account_role: "agent" },
-          error: null,
-        },
-        accounts: { data: { id: "acct-a", name: "A" }, error: null },
+      accounts: {
+        data: [
+          { account_id: "acct-a", name: "A", role: "agent", status: "active", is_active: true },
+        ],
+        error: null,
       },
     });
     createClient.mockReturnValue(client);
@@ -104,7 +73,7 @@ describe("requireAccountContext", () => {
   });
 
   it("still throws Unauthorized without session", async () => {
-    const { client } = makeClient({ user: null, byTable: {} });
+    const { client } = makeClient({ user: null });
     createClient.mockReturnValue(client);
     await expect(requireAccountContext()).rejects.toBeInstanceOf(
       UnauthorizedError,

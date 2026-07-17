@@ -34,11 +34,29 @@ INSERT INTO public.accounts (id, name, owner_user_id) VALUES
   ('11111111-1111-1111-1111-111111111111', 'Account A', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   ('22222222-2222-2222-2222-222222222222', 'Account B', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
 
-INSERT INTO public.profiles (user_id, full_name, email, account_id, account_role) VALUES
+INSERT INTO public.profiles (user_id, full_name, email, account_id, account_role, active_account_id) VALUES
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'User A', 'a@test.local',
-   '11111111-1111-1111-1111-111111111111', 'owner'),
+   '11111111-1111-1111-1111-111111111111', 'owner', '11111111-1111-1111-1111-111111111111'),
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'User B', 'b@test.local',
-   '22222222-2222-2222-2222-222222222222', 'owner');
+   '22222222-2222-2222-2222-222222222222', 'owner', '22222222-2222-2222-2222-222222222222')
+ON CONFLICT (user_id) DO UPDATE
+  SET account_id = EXCLUDED.account_id,
+      account_role = EXCLUDED.account_role,
+      active_account_id = EXCLUDED.active_account_id;
+
+-- Ciclo 002-R: membership now lives in account_members (N:N). Seed the
+-- two owners so is_account_member (active-scoped) resolves.
+INSERT INTO public.account_members (account_id, user_id, role, status, joined_at) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'owner', 'active', now()),
+  ('22222222-2222-2222-2222-222222222222', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'owner', 'active', now())
+ON CONFLICT (account_id, user_id) DO UPDATE SET status = 'active';
+
+DELETE FROM public.account_members
+WHERE user_id IN ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+  AND account_id NOT IN ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
+DELETE FROM public.accounts
+WHERE owner_user_id IN ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+  AND id NOT IN ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
 
 INSERT INTO public.contacts (id, account_id, user_id, phone, name) VALUES
   ('c1111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',

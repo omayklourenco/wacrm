@@ -9,6 +9,38 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [Unreleased] — Oslou Flow Ciclo 002-R
+
+SaaS multi-account onboarding, N:N memberships, and secure org switching.
+
+> **Migration required:** apply `supabase/migrations/038_multi_account_membership_onboarding.sql`
+
+### Added
+
+- **Multi-organization membership (N:N).** A user can now belong to several
+  organizations with a different role in each, via the new `account_members`
+  table. Existing single-account users are backfilled unchanged (one active
+  owner membership each).
+- **Organization switcher** in the header + **active organization** persisted on
+  `profiles.active_account_id`. Switching validates membership server-side
+  (`set_active_account` RPC) and never trusts the client.
+- **Onboarding flow** (`/onboarding`, `POST /api/onboarding`) for users without
+  an organization — idempotent create-first-org.
+- **`GET/POST /api/account/active`** to list orgs and switch the active one.
+
+### Changed
+
+- **`is_account_member` is now N:N + active-scoped.** RLS across every table is
+  unchanged but resolves membership from `account_members` scoped to the active
+  organization — single-tenant view per request, zero policy edits.
+- **Invitations are additive.** `redeem_invitation` now adds a membership
+  (keeping the user's existing organizations) and switches to the invited org,
+  instead of destructively moving the profile.
+- Member-management RPCs (`set_member_role`, `remove_account_member`,
+  `transfer_account_ownership`) operate on `account_members` in the active org.
+- `profiles.account_id` / `account_role` retained as a **legacy mirror** of the
+  active org (no longer the tenant-authorization source; flagged for removal).
+
 ## [Unreleased] — Oslou Flow Ciclo 001-R
 
 Security hardening for multi-tenant isolation (Oslou Flow adoption).

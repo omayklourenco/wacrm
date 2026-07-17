@@ -45,6 +45,14 @@ interface AccountSummary {
   default_currency: string;
 }
 
+/** One organization the signed-in user is an active member of. */
+export interface MembershipSummary {
+  accountId: string;
+  name: string;
+  role: AccountRole;
+  isActive: boolean;
+}
+
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
@@ -102,6 +110,23 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+
+  // ----------------------------------------------------------
+  // Multi-account (Ciclo 002-R)
+  // ----------------------------------------------------------
+  /** Every organization the user is an active member of. */
+  availableAccounts: MembershipSummary[];
+  /**
+   * True while the initial membership list is loading. Distinct from
+   * profileLoading so the switcher can show a skeleton independently.
+   */
+  accountsLoading: boolean;
+  /**
+   * Switch the active organization. Validates membership server-side,
+   * then hard-reloads so every RLS-scoped query re-runs under the new
+   * tenant. Rejects (no-op) when switching to a non-member account.
+   */
+  switchAccount: (accountId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -115,6 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [accounts, setAccounts] = useState<MembershipSummary[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
@@ -126,6 +153,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // a profile for. This prevents redundant re-fetches and toggling
   // profileLoading back to true on window focus events/token refresh.
   const lastFetchedUserIdRef = useRef<string | null>(null);
+
+  // Load the user's active memberships via the N:N RPC (Ciclo 002-R).
+  // Source of truth for the organization switcher and for deriving the
+  // active account / role. Bypasses the active-scoped accounts RLS so
+  // every org the user belongs to is listed.
+  const fetchAccounts = useCallback(async () => {
+    const supabase = createClient();
+    setAccountsLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("get_user_accounts");
+      if (error) {
+        console.error("[AuthProvider] get_user_accounts error:", error.message);
+        return;
+      }
+      const rows = (data ?? []) as Array<{
+        account_id: string;
+        name: string;
+        role: string;
+        status: string;
+        is_active: boolean;
+      }>;
+      setAccounts(
+        rows.flatMap((r) =>
+          isAccountRole(r.role)
+            ? [
+                {
+                  accountId: r.account_id,
+                  name: r.name,
+                  role: r.role,
+                  isActive: r.is_active,
+                },
+              ]
+            : [],
+        ),
+      );
+    } catch (err) {
+      console.error("[AuthProvider] fetchAccounts threw:", err);
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, []);
 
   // Shared across init, auth-state-change listener, and the exposed
   // refreshProfile() callback. Reads the current session's user id and
@@ -214,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_role: accountRole,
         });
         setAccount(accountRow);
+        void fetchAccounts();
       } else {
         lastFetchedUserIdRef.current = null;
       }
@@ -223,7 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setProfileLoading(false);
     }
-  }, []);
+  }, [fetchAccounts]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -287,6 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setAccounts([]);
         setProfileLoading(false);
       }
 
@@ -306,6 +376,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setAccounts([]);
     window.location.href = "/login";
   }, []);
 
@@ -314,15 +385,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
 
+  // Switch the active organization. Server validates membership via the
+  // set_active_account RPC; on success we hard-reload so every
+  // RLS-scoped query (server + client) re-runs under the new tenant.
+  const switchAccount = useCallback(
+    async (accountId: string) => {
+      const res = await fetch("/api/account/active", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId }),
+      });
+      if (!res.ok) {
+        console.error("[AuthProvider] switchAccount failed:", res.status);
+        return;
+      }
+      window.location.href = "/dashboard";
+    },
+    [],
+  );
+
   // Derive the role booleans once per profile change rather than on
   // every consumer render. Cheap regardless, but the memo also gives
   // each derived value a stable identity for React.memo / useEffect
   // dependencies downstream.
   const derived = useMemo(() => {
-    const role = profile?.account_role ?? null;
+    // Prefer the active membership from the N:N list (source of truth
+    // for role-per-organization); fall back to the profile mirror while
+    // the membership list is still loading.
+    const activeMembership =
+      accounts.find((a) => a.isActive) ?? accounts[0] ?? null;
+    const role: AccountRole | null =
+      activeMembership?.role ?? profile?.account_role ?? null;
+    const accountId = activeMembership?.accountId ?? profile?.account_id ?? null;
     return {
       accountRole: role,
-      accountId: profile?.account_id ?? null,
+      accountId,
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -331,7 +428,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [accounts, profile?.account_role, profile?.account_id]);
 
   return (
     <AuthContext.Provider
@@ -344,6 +441,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfile,
         account,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
+        availableAccounts: accounts,
+        accountsLoading,
+        switchAccount,
         ...derived,
       }}
     >
@@ -383,6 +483,9 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      availableAccounts: [],
+      accountsLoading: false,
+      switchAccount: async () => {},
     };
   }
   return ctx;

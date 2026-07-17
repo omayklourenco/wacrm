@@ -2,6 +2,11 @@
 
 ## Status
 
+**Superado por [ADR-0003](./ADR-0003-ACTIVE_ACCOUNT_CONTEXT.md)** — Ciclo 002-R
+implementou o membership N:N (`account_members`), a conta ativa
+(`profiles.active_account_id`) e a troca segura de contexto. O adiamento
+descrito abaixo foi resolvido.
+
 Aceito (documentado) — Ciclo 001-R (2026-07-17)
 
 ## Contexto
