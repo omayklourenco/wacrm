@@ -1,4 +1,14 @@
-# wacrm — CRM Template for WhatsApp
+# Oslou Flow
+
+> Base técnica adotada a partir do fork **[omayklourenco/wacrm](https://github.com/omayklourenco/wacrm)** (upstream [ArnasDon/wacrm](https://github.com/ArnasDon/wacrm), licença MIT).
+>
+> CRM e automação comercial multiempresa com **WhatsApp Cloud API (Meta)** — inbox compartilhado, contatos, pipelines, broadcasts e automações.
+
+**Ciclo 000-R:** auditoria, estabilização e adoção da base. Ver `docs/OSLOU_FLOW_CYCLE_000_R_WACRM_ADOPTION_RESULTS.md` e `docs/ADR/ADR-0001-WACRM-AS-OSLOU-FLOW-BASE.md`.
+
+---
+
+# wacrm — CRM Template for WhatsApp (upstream)
 
 > Self-hostable CRM template for WhatsApp® — shared inbox, contacts,
 > sales pipelines, broadcasts, and no-code automations. Fork it, brand
@@ -76,7 +86,21 @@ This is a **template**, not a product. Forking means you get:
 Not a framework. Not an SDK. A concrete, working CRM you can stand up
 in an afternoon and make yours.
 
-## Quick start
+## Quick start (Oslou Flow / local)
+
+```bash
+cd D:/SISTEMAS/wacrm
+npm ci
+cp .env.local.example .env.local   # or .env.example — fill Supabase + Meta
+# Preferido: supabase start && supabase db reset  (CLI necessária)
+npm run dev
+```
+
+Gates locais: `npm run lint && npm run typecheck && npm test && npm run build`
+
+Documentação de ambiente: [docs/LOCAL_DEVELOPMENT.md](./docs/LOCAL_DEVELOPMENT.md).
+
+## Quick start (upstream template)
 
 ```bash
 # Fork on GitHub first: https://github.com/ArnasDon/wacrm → Fork
@@ -169,4 +193,6 @@ rather than here. Details in
 
 ## License
 
-[MIT](./LICENSE). Fork it, brand it, host it.
+[MIT](./LICENSE) — Copyright (c) 2026 Arnas Donauskas. Preserved for Oslou Flow commercial use; see [docs/THIRD_PARTY_AND_LICENSES.md](./docs/THIRD_PARTY_AND_LICENSES.md).
+
+Fork it, brand it, host it.
