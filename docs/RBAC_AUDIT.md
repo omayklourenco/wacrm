@@ -38,3 +38,11 @@ Fonte: `src/lib/auth/roles.ts` + policies `is_account_member(..., min_role)`.
 ## Validação dinâmica
 
 Não executada em banco local. Unit tests de hierarquia em `isolation-guards.test.ts`.
+
+## Ciclo 003-R — Platform Admin (global)
+
+- Papéis globais `super_admin` / `platform_admin` vivem em `platform_admins`.
+- **Não** derivam de `account_role` nem de membership tenant.
+- Autorização: `requirePlatformAdminContext` (ignora `active_account_id`).
+- Tenant owner/admin/agent/viewer **não** acessam `/api/super-admin/*`.
+- Smoke: `scripts/rls-platform-admin-smoke.sql`.

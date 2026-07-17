@@ -6,6 +6,8 @@
 
 **Ciclo 000-R:** auditoria, estabilização e adoção da base. Ver `docs/OSLOU_FLOW_CYCLE_000_R_WACRM_ADOPTION_RESULTS.md` e `docs/ADR/ADR-0001-WACRM-AS-OSLOU-FLOW-BASE.md`.
 
+**Ciclo 001-R�003-R:** blindagem multiempresa, membership N:N e Super Admin (/super-admin). Ver docs/OSLOU_FLOW_CYCLE_003_R_PLATFORM_SUPER_ADMIN_RESULTS.md e docs/ADR/ADR-0004-PLATFORM_CONTROL_PLANE.md.
+
 ---
 
 # wacrm — CRM Template for WhatsApp (upstream)

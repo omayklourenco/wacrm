@@ -51,6 +51,8 @@ export interface MembershipSummary {
   name: string;
   role: AccountRole;
   isActive: boolean;
+  /** Platform-level status (Ciclo 003-R). */
+  platformStatus: "active" | "suspended";
 }
 
 interface AuthContextValue {
@@ -173,6 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: string;
         status: string;
         is_active: boolean;
+        platform_status?: string;
       }>;
       setAccounts(
         rows.flatMap((r) =>
@@ -183,6 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   name: r.name,
                   role: r.role,
                   isActive: r.is_active,
+                  platformStatus:
+                    r.platform_status === "suspended" ? "suspended" : "active",
                 },
               ]
             : [],

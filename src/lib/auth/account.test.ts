@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // getCurrentAccount resolves the caller's ACTIVE account context from
-// the N:N `get_user_accounts` RPC (Ciclo 002-R). These tests guard the
-// resolution contract: active membership selection, fallback + pointer
-// repair, and the error mapping.
+// the N:N `get_user_accounts` RPC (Ciclo 002-R / 003-R). These tests
+// guard active membership selection, suspension fallback, and errors.
 
 interface RpcCall {
   fn: string;
@@ -44,8 +43,13 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
-const { getCurrentAccount, UnauthorizedError, ForbiddenError, NoActiveAccountError } =
-  await import("./account");
+const {
+  getCurrentAccount,
+  UnauthorizedError,
+  ForbiddenError,
+  NoActiveAccountError,
+  AccountSuspendedError,
+} = await import("./account");
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -57,8 +61,22 @@ describe("getCurrentAccount", () => {
       user: { id: "user-1" },
       accounts: {
         data: [
-          { account_id: "acct-1", name: "Acme", role: "owner", status: "active", is_active: true },
-          { account_id: "acct-2", name: "Beta", role: "agent", status: "active", is_active: false },
+          {
+            account_id: "acct-1",
+            name: "Acme",
+            role: "owner",
+            status: "active",
+            is_active: true,
+            platform_status: "active",
+          },
+          {
+            account_id: "acct-2",
+            name: "Beta",
+            role: "agent",
+            status: "active",
+            is_active: false,
+            platform_status: "active",
+          },
         ],
         error: null,
       },
@@ -73,9 +91,9 @@ describe("getCurrentAccount", () => {
       role: "owner",
       membershipId: "acct-1:user-1",
       account: { id: "acct-1", name: "Acme" },
+      platformStatus: "active",
     });
     expect(ctx.availableAccounts).toHaveLength(2);
-    // No fallback switch needed when an active row is present.
     expect(rpcCalls.some((c) => c.fn === "set_active_account")).toBe(false);
   });
 
@@ -84,7 +102,14 @@ describe("getCurrentAccount", () => {
       user: { id: "user-1" },
       accounts: {
         data: [
-          { account_id: "acct-2", name: "Beta", role: "agent", status: "active", is_active: false },
+          {
+            account_id: "acct-2",
+            name: "Beta",
+            role: "agent",
+            status: "active",
+            is_active: false,
+            platform_status: "active",
+          },
         ],
         error: null,
       },
@@ -95,6 +120,62 @@ describe("getCurrentAccount", () => {
     expect(ctx.accountId).toBe("acct-2");
     const switchCall = rpcCalls.find((c) => c.fn === "set_active_account");
     expect(switchCall?.args).toEqual({ p_account_id: "acct-2" });
+  });
+
+  it("skips a suspended active account and falls back to an operable one", async () => {
+    const { client, rpcCalls } = makeClient({
+      user: { id: "user-1" },
+      accounts: {
+        data: [
+          {
+            account_id: "acct-a",
+            name: "A",
+            role: "owner",
+            status: "active",
+            is_active: true,
+            platform_status: "suspended",
+          },
+          {
+            account_id: "acct-b",
+            name: "B",
+            role: "agent",
+            status: "active",
+            is_active: false,
+            platform_status: "active",
+          },
+        ],
+        error: null,
+      },
+    });
+    createClient.mockReturnValue(client);
+
+    const ctx = await getCurrentAccount();
+    expect(ctx.accountId).toBe("acct-b");
+    expect(ctx.platformStatus).toBe("active");
+    expect(rpcCalls.some((c) => c.fn === "set_active_account")).toBe(true);
+  });
+
+  it("throws AccountSuspendedError when every membership is suspended", async () => {
+    const { client } = makeClient({
+      user: { id: "user-1" },
+      accounts: {
+        data: [
+          {
+            account_id: "acct-a",
+            name: "A",
+            role: "owner",
+            status: "active",
+            is_active: true,
+            platform_status: "suspended",
+          },
+        ],
+        error: null,
+      },
+    });
+    createClient.mockReturnValue(client);
+    await expect(getCurrentAccount()).rejects.toBeInstanceOf(
+      AccountSuspendedError,
+    );
   });
 
   it("throws UnauthorizedError when there is no session", async () => {
@@ -130,7 +211,14 @@ describe("getCurrentAccount", () => {
       user: { id: "user-1" },
       accounts: {
         data: [
-          { account_id: "acct-1", name: "Acme", role: "superuser", status: "active", is_active: true },
+          {
+            account_id: "acct-1",
+            name: "Acme",
+            role: "superuser",
+            status: "active",
+            is_active: true,
+            platform_status: "active",
+          },
         ],
         error: null,
       },

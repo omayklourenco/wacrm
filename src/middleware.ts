@@ -48,6 +48,7 @@ export async function middleware(request: NextRequest) {
   // they can accept the invitation in one click. Without this,
   // a forwarded invite link to someone who's already signed in
   // would silently drop them on /dashboard.
+  // Super-admin login is separate and must NOT bounce to /dashboard.
   if (user && (
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/signup' ||
@@ -70,11 +71,26 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/onboarding']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/onboarding', '/organization-suspended']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
+  // Super Admin area — auth required; platform-admin authorization is
+  // enforced in the layout / API (not derived from tenant roles).
+  if (!user && request.nextUrl.pathname.startsWith('/super-admin') &&
+      request.nextUrl.pathname !== '/super-admin/login') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/super-admin/login'
+    return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
+  if (!user && request.nextUrl.pathname.startsWith('/api/super-admin')) {
+    return withRefreshedCookies(
+      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    )
   }
 
   // API routes that need auth (not webhooks)

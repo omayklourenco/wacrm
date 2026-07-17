@@ -49,7 +49,7 @@ Oslou Platform
 | `account` já funciona como tenant? | **Sim** para isolamento de dados via `account_id` + RLS. |
 | Relações sem `account_id`? | Filhos isolados via JOIN ao pai (`messages`, `contact_tags`, …). |
 | Units sem reescrita? | **Não** — exigiriam nova entidade e escopo. |
-| Usuário em várias organizações? | **Não** hoje; convite **move** o usuário. |
+| Usuário em várias organizações? | **Sim** (002-R `account_members`). |
 | Papéis por org ou globais? | Por account (`account_role`). |
 | Owner único? | Sim (`accounts.owner_user_id` + unique por owner). |
 | Convites vinculados à org? | Sim (`account_invitations.account_id`). |
@@ -61,12 +61,17 @@ Oslou Platform
 
 ## Gaps prioritários
 
-1. Membership N:N + troca de organização
-2. Units / teams
-3. Plans / entitlements / suspension
-4. Super Admin da plataforma
+1. ~~Membership N:N + troca de organização~~ (002-R)
+2. ~~Super Admin da plataforma / suspensão~~ (003-R)
+3. Units / teams
+4. Plans / entitlements
 5. Rename/mapeamento Organization (cosmético + docs)
+
+## Atualização 003-R
+
+- Super Admin global em `platform_admins` (separado de owner tenant).
+- Suspensão de organização via `accounts.platform_status`.
 
 ## Veredito
 
-`account` **serve como tenant SaaS básico**, mas **não** cobre o modelo Oslou completo (multi-org, units, planos).
+`account` **serve como tenant SaaS básico**, com multi-org (002-R) e plano de controle (003-R). Ainda faltam units e planos/limites.

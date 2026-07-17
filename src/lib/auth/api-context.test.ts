@@ -7,8 +7,19 @@ import { __resetRateLimitForTests, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Mock the service-role client factory — requireApiKey only stashes
 // the returned client in the context; tests never call through it.
+// Ciclo 003-R also uses it for assertAccountNotSuspended.
 vi.mock("@/lib/flows/admin-client", () => ({
-  supabaseAdmin: () => ({ __isMockAdminClient: true }),
+  supabaseAdmin: () => ({
+    __isMockAdminClient: true,
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () =>
+            Promise.resolve({ data: { platform_status: "active" }, error: null }),
+        }),
+      }),
+    }),
+  }),
 }));
 
 // Mock the store so we control which row a hash resolves to.

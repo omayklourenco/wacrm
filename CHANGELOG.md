@@ -9,6 +9,25 @@ Versions follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0, `MINOR` bumps cover new modules; `PATCH` bumps cover bug fixes
 and polish.
 
+## [Unreleased] — Oslou Flow Ciclo 003-R
+
+Platform Super Admin control plane: global admins, org suspension, audit.
+
+> **Migration required:** apply `supabase/migrations/039_platform_admin_control_plane.sql`
+
+### Added
+
+- **`platform_admins` / `platform_audit_logs`** — identidade global separada de roles tenant.
+- **Painel `/super-admin`** — dashboard, organizações, suspensão/reativação, admins, auditoria.
+- **`accounts.platform_status`** — suspender organização sem apagar dados.
+- Seed local: `scripts/create-platform-admin.ts` (via `PLATFORM_ADMIN_*` env).
+
+### Changed
+
+- Conta suspensa bloqueia dashboard operacional, APIs mutáveis, API keys, MCP e Meta outbound.
+- Meta inbound continua persistindo; flows/automations/AI são pulados.
+- Usuário multi-account pode trocar para outra organização ativa.
+
 ## [Unreleased] — Oslou Flow Ciclo 002-R
 
 SaaS multi-account onboarding, N:N memberships, and secure org switching.

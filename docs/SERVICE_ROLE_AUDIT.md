@@ -20,3 +20,13 @@
 ## Frontend
 
 Service-role **não** exposta ao browser.
+
+## Ciclo 003-R
+
+| Arquivo | Operação | Auth | Classificação |
+|---------|----------|------|---------------|
+| `api/super-admin/*` | list/suspend/activate/admins | Platform Admin + service | SAFE após `requirePlatformAdminContext` |
+| `lib/platform/organizations.ts` | queries globais | service após auth platform | SAFE |
+| `api/whatsapp/webhook` | inbound suspensa | HMAC | SAFE — persiste; pula automations/AI |
+| `api/whatsapp/send` | outbound | sessão + account | SAFE — bloqueia se suspensa |
+| `lib/auth/api-context` | API key | Bearer | SAFE — 403 se account suspensa |

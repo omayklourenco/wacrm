@@ -36,6 +36,8 @@ function makeSupabaseMock() {
       switch (table) {
         case 'profiles':
           return { data: { account_id: 'acct-1' }, error: null }
+        case 'accounts':
+          return { data: { platform_status: 'active' }, error: null }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
