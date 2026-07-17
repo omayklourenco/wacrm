@@ -84,13 +84,17 @@ Ver `SAAS_READINESS_GAP_ANALYSIS.md`, `LEGACY_FEATURE_MIGRATION_MATRIX.md`.
 | lint | OK (39 warnings, 0 errors) |
 | typecheck | OK |
 | test | OK após correções |
-| build | (executado no fechamento do ciclo) |
-| git diff --check | (executado no fechamento) |
+| build | OK (com env placeholders CI) |
+| git diff --check | OK |
+| test final | 655 passed (67 files) |
 
 ## 28. CI remoto
 
 Workflow `.github/workflows/ci.yml` = lint+typecheck+test+build.  
-**`gh` CLI não instalado** — runs remotos não consultados via API neste host. Consultar manualmente: https://github.com/omayklourenco/wacrm/actions
+Branch pushada: `stabilization/wacrm-adoption-cycle-000-r` @ `cd91c0f`.  
+`gh` instalado mas **sem login** — PR/CI via API não criados automaticamente.  
+Abrir PR: https://github.com/omayklourenco/wacrm/pull/new/stabilization/wacrm-adoption-cycle-000-r  
+Actions: https://github.com/omayklourenco/wacrm/actions
 
 ## 29. Correções executadas
 
