@@ -12,7 +12,8 @@ import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profileLoading, accountsLoading, availableAccounts } =
+    useAuth();
   const router = useRouter();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
@@ -25,6 +26,29 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  // Onboarding gate (Ciclo 002-R): an authenticated user with zero
+  // active memberships has no tenant to scope the app to. Send them to
+  // create their first organization. Wait for the membership list to
+  // settle first so we don't bounce during the initial load window.
+  useEffect(() => {
+    if (
+      !loading &&
+      user &&
+      !profileLoading &&
+      !accountsLoading &&
+      availableAccounts.length === 0
+    ) {
+      router.push("/onboarding");
+    }
+  }, [
+    loading,
+    user,
+    profileLoading,
+    accountsLoading,
+    availableAccounts.length,
+    router,
+  ]);
 
   if (loading) {
     return (

@@ -3,6 +3,11 @@
 **Ciclo origem:** 000-R  
 **Ordem reordenada pelos findings** (segurança antes de feature SaaS).
 
+> **Status após 002-R:** 001-R (blindagem) e 002-R (membership N:N, onboarding,
+> troca de contexto) concluídos. **Próximo ciclo recomendado: 003-R — Planos,
+> limites e billing (module gating)**; alternativa: limpeza do espelho legado
+> `profiles.account_id/account_role` + UI de gestão de membros/convites multi-org.
+
 ---
 
 ## Ciclo 001-R — Blindagem multiempresa e isolamento service-role

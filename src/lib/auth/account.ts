@@ -1,7 +1,7 @@
 // ============================================================
 // Server-side account context — for API routes and server
-// components. Reads the caller's profile + account in one round
-// trip and verifies role on demand.
+// components. Resolves the caller's ACTIVE account + role from the
+// N:N `account_members` table (Ciclo 002-R) in one round trip.
 //
 // IMPORTANT: this module is server-only. It imports the Supabase
 // SSR client (`@/lib/supabase/server`), which reads `next/headers`
@@ -12,16 +12,15 @@
 //
 // Calling convention
 // ------------------
-// API routes don't need to redo `supabase.auth.getUser()` — they
-// receive a fully-loaded context from `requireRole`:
-//
 //   try {
 //     const ctx = await requireRole("admin");
-//     // ctx.supabase — the SSR client (RLS scoped to this user)
-//     // ctx.userId  — auth.uid()
-//     // ctx.accountId / ctx.role / ctx.account
+//     // ctx.supabase   — the SSR client (RLS scoped to the active account)
+//     // ctx.userId     — auth.uid()
+//     // ctx.accountId  — the caller's ACTIVE account
+//     // ctx.role       — role within the active account
+//     // ctx.availableAccounts — every org the caller belongs to
 //   } catch (err) {
-//     return errorResponse(err); // see toErrorResponse() below
+//     return toErrorResponse(err);
 //   }
 // ============================================================
 
@@ -33,9 +32,6 @@ import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
 
 // ------------------------------------------------------------
 // Errors
-//
-// Custom classes so API routes can map a single `catch` to the
-// right HTTP status without sprinkling 401/403 strings everywhere.
 // ------------------------------------------------------------
 
 export class UnauthorizedError extends Error {
@@ -55,19 +51,29 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * A distinct error for "authenticated, but has no active organization".
+ * Routes / pages can catch this to redirect to onboarding instead of
+ * showing a generic 403.
+ */
+export class NoActiveAccountError extends Error {
+  readonly status = 409 as const;
+  constructor(message = "No active organization") {
+    super(message);
+    this.name = "NoActiveAccountError";
+  }
+}
+
+/**
  * Convert one of the typed errors above (or anything else) into a
- * `NextResponse`. Routes can do:
- *
- *   } catch (err) {
- *     return toErrorResponse(err);
- *   }
- *
- * Unknown errors collapse to 500 with the generic message — we
- * never leak `err.message` for non-classified errors to keep
- * server internals out of the wire.
+ * `NextResponse`. Unknown errors collapse to 500 with a generic
+ * message — we never leak internals to the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
+  if (
+    err instanceof UnauthorizedError ||
+    err instanceof ForbiddenError ||
+    err instanceof NoActiveAccountError
+  ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   console.error("[toErrorResponse] uncategorized error:", err);
@@ -78,36 +84,54 @@ export function toErrorResponse(err: unknown): NextResponse {
 // Account context
 // ------------------------------------------------------------
 
+/** One organization the caller belongs to (for switcher / context). */
+export interface AvailableAccount {
+  accountId: string;
+  name: string;
+  role: AccountRole;
+}
+
 export interface AccountContext {
-  /** Supabase SSR client, RLS scoped to the calling user. */
+  /** Supabase SSR client, RLS scoped to the active account. */
   supabase: SupabaseClient;
   /** `auth.uid()` for the caller. Always defined when this resolves. */
   userId: string;
-  /** Caller's account_id from their profile row. */
+  /** Caller's ACTIVE account id (from account_members / active_account_id). */
   accountId: string;
-  /** Caller's role within their account. */
+  /** Caller's role within the active account. */
   role: AccountRole;
   /**
-   * Membership surrogate until a real `account_members` table exists
-   * (Ciclo 001-R / ADR-0002). Today membership == profile row, so the
-   * stable id is `userId` within `accountId`.
+   * Stable membership identifier for the active account. With the N:N
+   * model (Ciclo 002-R) a membership is a row in `account_members`,
+   * uniquely keyed by (account_id, user_id); we surface that composite
+   * as `${accountId}:${userId}` so callers have a stable handle without
+   * an extra round trip for the row's own uuid.
    */
   membershipId: string;
-  /** Lightweight account meta — id + name. */
+  /** Lightweight active-account meta — id + name. */
   account: { id: string; name: string };
+  /** Every organization the caller is an active member of. */
+  availableAccounts: AvailableAccount[];
+}
+
+interface UserAccountRow {
+  account_id: string;
+  name: string;
+  role: string;
+  status: string;
+  is_active: boolean;
 }
 
 /**
- * Resolve the caller's user + account + role in one round trip.
+ * Resolve the caller's user + ACTIVE account + role in one round trip.
+ *
+ * Uses the `get_user_accounts()` RPC (SECURITY DEFINER) which returns
+ * every active membership regardless of the active-scoped `accounts`
+ * RLS, so it works even for freshly-switched or fallback contexts.
  *
  * Throws `UnauthorizedError` if there's no Supabase session.
- * Throws `ForbiddenError` if the profile is missing account
- * fields (shouldn't happen post-017 migration; defensive guard
- * against profile rows that pre-date the backfill or were
- * inserted by hand).
- *
- * Use `requireRole(min)` instead when the route also needs a
- * minimum-role check — it's a thin wrapper over this.
+ * Throws `NoActiveAccountError` if the caller has zero memberships
+ * (the app should route them to onboarding).
  */
 export async function getCurrentAccount(): Promise<AccountContext> {
   const supabase = await createClient();
@@ -120,70 +144,59 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     throw new UnauthorizedError();
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("account_id, account_role")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
+  const { data, error } = await supabase.rpc("get_user_accounts");
   if (error) {
-    console.error("[getCurrentAccount] profile fetch error:", error);
+    console.error("[getCurrentAccount] get_user_accounts error:", error);
     throw new ForbiddenError("Could not load account context");
   }
-  if (!data || !data.account_id || !data.account_role) {
-    // Pre-migration profile, or a manual insert that skipped the
-    // signup trigger. The user is authenticated but the app has
-    // no way to scope their queries — treat as forbidden.
-    throw new ForbiddenError("Profile is not linked to an account");
-  }
-  if (!isAccountRole(data.account_role)) {
-    // The DB enum should make this impossible, but a future
-    // migration that broadens the enum without updating TS would
-    // hit this — surface it rather than silently widening.
-    throw new ForbiddenError(`Unknown account role: ${data.account_role}`);
+
+  const accounts = (data ?? []) as UserAccountRow[];
+  if (accounts.length === 0) {
+    throw new NoActiveAccountError();
   }
 
-  // Load the account with a plain point lookup by id rather than an
-  // embedded FK join (`account:accounts!inner(...)`). The embed forces
-  // PostgREST to resolve the profiles.account_id → accounts.id
-  // relationship from its schema cache; when that cache is stale — a
-  // common Supabase state right after a migration adds the FK, or when
-  // migrations are applied out of band — the embed fails hard with
-  // PGRST200 ("could not find a relationship … in the schema cache")
-  // and takes down the entire account context (issue #294). A lookup by
-  // id needs no relationship inference and is gated by the same accounts
-  // RLS, so it stays robust against cache staleness and older schemas.
-  const { data: account, error: accountErr } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .eq("id", data.account_id)
-    .maybeSingle();
+  // Pick the stored active membership; fall back to the first one and
+  // repair the pointer so RLS (which keys off profiles.active_account_id)
+  // scopes to a valid account instead of returning empty everywhere.
+  let active = accounts.find((a) => a.is_active);
+  if (!active) {
+    active = accounts[0];
+    const { error: switchErr } = await supabase.rpc("set_active_account", {
+      p_account_id: active.account_id,
+    });
+    if (switchErr) {
+      console.error("[getCurrentAccount] fallback set_active_account error:", switchErr);
+    }
+  }
 
-  if (accountErr) {
-    console.error("[getCurrentAccount] account fetch error:", accountErr);
-    throw new ForbiddenError("Could not load account context");
+  if (!isAccountRole(active.role)) {
+    throw new ForbiddenError(`Unknown account role: ${active.role}`);
   }
-  if (!account) {
-    // account_id points at no readable account row — orphaned profile
-    // or an RLS gap. Same "can't scope this user" outcome as above.
-    throw new ForbiddenError("Profile is not linked to an account");
-  }
+
+  const availableAccounts: AvailableAccount[] = accounts.flatMap((a) =>
+    isAccountRole(a.role)
+      ? [{ accountId: a.account_id, name: a.name, role: a.role }]
+      : [],
+  );
 
   return {
     supabase,
     userId: user.id,
-    accountId: data.account_id,
-    role: data.account_role,
-    membershipId: user.id,
-    account: { id: account.id, name: account.name },
+    accountId: active.account_id,
+    role: active.role,
+    membershipId: `${active.account_id}:${user.id}`,
+    account: { id: active.account_id, name: active.name },
+    availableAccounts,
   };
 }
 
 export interface RequireAccountContextOptions {
   /**
    * Optional account id from body/query/path. NEVER trusted alone —
-   * must equal the session membership account or the request is denied
-   * with a generic Forbidden (no existence leak).
+   * must equal the caller's ACTIVE account or the request is denied
+   * with a generic Forbidden (no existence leak). To operate on a
+   * different organization the caller must switch it active first
+   * (POST /api/account/active), which validates membership.
    */
   requestedAccountId?: string | null;
   /** Minimum role required. Defaults to viewer (any member). */
@@ -191,11 +204,11 @@ export interface RequireAccountContextOptions {
 }
 
 /**
- * Ciclo 001-R — central account context gate for privileged routes.
+ * Central account-context gate for privileged routes.
  *
  * - User comes from the authenticated session.
- * - Account comes from membership (profiles), never from the client alone.
- * - requestedAccountId is validated against membership when present.
+ * - Account comes from the active membership, never the client alone.
+ * - requestedAccountId is validated against the active account.
  */
 export async function requireAccountContext(
   options: RequireAccountContextOptions = {},
@@ -206,17 +219,18 @@ export async function requireAccountContext(
 
   const requested = options.requestedAccountId?.trim();
   if (requested && requested !== ctx.accountId) {
+    // The caller may well be a member of `requested`, but it is not the
+    // active tenant for this request — RLS is scoped to the active
+    // account, so honoring it here would silently return empty / wrong
+    // data. Force an explicit switch instead of guessing.
     throw new ForbiddenError("Forbidden");
   }
   return ctx;
 }
 
 /**
- * Resolve the caller's account context and enforce a minimum role.
- *
- * Throws `UnauthorizedError` / `ForbiddenError` as documented on
- * `getCurrentAccount`, plus `ForbiddenError("Insufficient role")`
- * when the caller is below `min`.
+ * Resolve the caller's account context and enforce a minimum role
+ * within the ACTIVE account.
  */
 export async function requireRole(min: AccountRole): Promise<AccountContext> {
   const ctx = await getCurrentAccount();

@@ -1,6 +1,15 @@
 # Análise de gaps — multiempresa
 
-**Ciclo:** 000-R
+**Ciclo:** 000-R (atualizado no 002-R)
+
+> **Atualização Ciclo 002-R:** o gap principal foi fechado. Agora existe a
+> tabela `account_members` (N:N), conta ativa em `profiles.active_account_id`,
+> troca segura de contexto (`set_active_account`), onboarding idempotente e
+> convites aditivos. `is_account_member` passou a ler `account_members` escopada
+> pela conta ativa — toda a RLS ficou N:N sem editar policies. Ver
+> [ADR-0003](./ADR/ADR-0003-ACTIVE_ACCOUNT_CONTEXT.md) e o relatório
+> `OSLOU_FLOW_CYCLE_002_R_SAAS_ONBOARDING_MULTI_ACCOUNT_RESULTS.md`. O texto
+> abaixo descreve o estado 000-R (1:1) por histórico.
 
 ## Modelo atual (WACRM)
 
