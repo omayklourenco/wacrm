@@ -10,6 +10,7 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import { assertAccountNotSuspended, AccountSuspendedError } from '@/lib/auth/account-status'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -58,6 +59,18 @@ export async function POST(request: Request) {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    try {
+      await assertAccountNotSuspended(supabase, accountId)
+    } catch (err) {
+      if (err instanceof AccountSuspendedError) {
+        return NextResponse.json(
+          { error: 'This organization is suspended' },
+          { status: 403 },
+        )
+      }
+      throw err
     }
 
     const body = await request.json()

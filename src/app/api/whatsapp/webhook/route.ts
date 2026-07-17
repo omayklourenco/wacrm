@@ -282,6 +282,16 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       const config = configRows[0]
       const accountId = config.account_id as string
 
+      // Ciclo 003-R: inbound Meta events keep persisting for suspended
+      // orgs (avoid message loss / Meta retries), but outbound automation
+      // / flows / AI auto-reply are suppressed. See ADR-0004.
+      const { data: acctStatus } = await supabaseAdmin()
+        .from('accounts')
+        .select('platform_status')
+        .eq('id', accountId)
+        .maybeSingle()
+      const accountSuspended = acctStatus?.platform_status === 'suspended'
+
       // Handle status updates — account-scoped
       if (value.statuses) {
         for (const status of value.statuses) {
@@ -309,6 +319,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // the admin who saved the WhatsApp config.
           config.user_id,
           decryptedAccessToken,
+          accountSuspended,
         )
       }
     }
@@ -579,7 +590,8 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  accountSuspended = false,
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -717,6 +729,19 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // ============================================================
+  // Flow / automation / AI — skipped when the organization is
+  // platform-suspended (Ciclo 003-R). Inbound message rows above
+  // are still persisted.
+  // ============================================================
+  if (accountSuspended) {
+    console.info(
+      '[webhook] account suspended — skipping flows/automations/AI',
+      accountId,
+    )
+    return
+  }
 
   // ============================================================
   // Flow runner dispatch.

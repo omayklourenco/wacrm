@@ -46,3 +46,11 @@
 - Tabelas public de domínio com RLS: **~30+**
 - Policies: dezenas (padrão 4 por tabela parent + joins)
 - Tabelas sensíveis sem RLS: **nenhuma** nas migrations finais (pending executions sem policies = deny authenticated)
+
+## Ciclo 003-R — Platform control plane
+
+- Tabelas novas: `platform_admins`, `platform_audit_logs` (RLS deny-by-default para authenticated).
+- `accounts.platform_status` — suspensão de organização.
+- Após `db reset` local (039): **39** tabelas com RLS, **105** policies.
+- Tenant **não** lê platform tables; audit append-only.
+- Smoke: `scripts/rls-platform-admin-smoke.sql` + regressão multi-account.

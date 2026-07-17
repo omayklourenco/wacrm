@@ -12,8 +12,14 @@ import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading, profileLoading, accountsLoading, availableAccounts } =
-    useAuth();
+  const {
+    user,
+    loading,
+    profileLoading,
+    accountsLoading,
+    availableAccounts,
+    accountId,
+  } = useAuth();
   const router = useRouter();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
@@ -47,6 +53,31 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     profileLoading,
     accountsLoading,
     availableAccounts.length,
+    router,
+  ]);
+
+  // Suspension gate (Ciclo 003-R): if the active org is suspended and the
+  // user has no other operable org, send them to the suspended page.
+  // If they have another active org, AuthProvider / getCurrentAccount
+  // already falls back; here we only catch the all-suspended case or a
+  // stale active pointer still pointing at a suspended org.
+  useEffect(() => {
+    if (loading || !user || profileLoading || accountsLoading) return;
+    if (availableAccounts.length === 0) return;
+    const active = availableAccounts.find((a) => a.accountId === accountId);
+    const hasOperable = availableAccounts.some(
+      (a) => a.platformStatus !== "suspended",
+    );
+    if (active?.platformStatus === "suspended" && !hasOperable) {
+      router.push("/organization-suspended");
+    }
+  }, [
+    loading,
+    user,
+    profileLoading,
+    accountsLoading,
+    availableAccounts,
+    accountId,
     router,
   ]);
 

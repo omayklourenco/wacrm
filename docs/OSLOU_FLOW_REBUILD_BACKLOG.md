@@ -3,10 +3,9 @@
 **Ciclo origem:** 000-R  
 **Ordem reordenada pelos findings** (segurança antes de feature SaaS).
 
-> **Status após 002-R:** 001-R (blindagem) e 002-R (membership N:N, onboarding,
-> troca de contexto) concluídos. **Próximo ciclo recomendado: 003-R — Planos,
-> limites e billing (module gating)**; alternativa: limpeza do espelho legado
-> `profiles.account_id/account_role` + UI de gestão de membros/convites multi-org.
+> **Status após 003-R:** 001-R, 002-R e 003-R (Super Admin / suspensão)
+> concluídos. **Próximo ciclo recomendado: 004-R — Planos, limites e
+> entitlements** (billing Stripe em ciclo posterior se necessário).
 
 ---
 
@@ -26,35 +25,36 @@
 - **Aceite:** signup sem órfãos; convites sólidos; doc de tenant
 - **Fora:** units completas, billing
 
-## Ciclo 003-R — WhatsApp Meta onboarding e canais
+## Ciclo 003-R — Super Admin da plataforma *(concluído)*
+
+- **Objetivo:** operador Oslou (orgs, suspensão, suporte, audit)
+- **Dependências:** 002-R
+- **Risco:** Alto (privilégio global)
+- **Aceite:** SA isolado de tenant RLS; audit log; org suspensa bloqueada
+- **Fora:** billing completo, impersonação
+- **Resultados:** `docs/OSLOU_FLOW_CYCLE_003_R_PLATFORM_SUPER_ADMIN_RESULTS.md` · ADR-0004
+
+## Ciclo 004-R — Planos, limites e entitlements
+
+- **Objetivo:** Plan, limits, usage hooks
+- **Dependências:** 002-R, 003-R
+- **Risco:** Médio
+- **Aceite:** enforce server-side por entitlement
+- **Fora:** Stripe checkout (pode ser 005)
+
+## Ciclo 005-R — Billing
+
+- **Objetivo:** subscription / trial / suspension billing status
+- **Dependências:** 004-R
+- **Fora:** redesenho produto
+
+## Ciclo 006-R — WhatsApp Meta onboarding e canais
 
 - **Objetivo:** Embedded Signup / onboarding canal seguro; multi-número se necessário
 - **Dependências:** 001-R
 - **Risco:** Médio (Meta app review)
 - **Aceite:** conectar test number sandbox; tokens só GCM; HMAC OK
 - **Fora:** Baileys
-
-## Ciclo 004-R — Super Admin da plataforma
-
-- **Objetivo:** operador Oslou (orgs, suspensão, suporte)
-- **Dependências:** 002-R
-- **Risco:** Alto (privilégio global)
-- **Aceite:** SA isolado de tenant RLS; audit log
-- **Fora:** billing completo
-
-## Ciclo 005-R — Planos, limites e entitlements
-
-- **Objetivo:** Plan, limits, usage hooks
-- **Dependências:** 002-R, 004-R
-- **Risco:** Médio
-- **Aceite:** enforce server-side por entitlement
-- **Fora:** Stripe checkout (pode ser 006)
-
-## Ciclo 006-R — Billing
-
-- **Objetivo:** subscription / trial / suspension billing status
-- **Dependências:** 005-R
-- **Fora:** redesenho produto
 
 ## Ciclo 007-R — Inbox e operação multiatendente
 
@@ -89,6 +89,7 @@
 
 ## Próximo ciclo recomendado
 
-**002-R — Onboarding SaaS e organizações (membership N:N)** — ver ADR-0002.
+**004-R — Planos, limites e entitlements** — ver ADR-0004.
 
-Status 001-R: concluído em `security/multitenancy-hardening-cycle-001-r` (ver `OSLOU_FLOW_CYCLE_001_R_MULTITENANCY_HARDENING_RESULTS.md`).
+Status 003-R: concluído em `feature/platform-super-admin-cycle-003-r`
+(ver `OSLOU_FLOW_CYCLE_003_R_PLATFORM_SUPER_ADMIN_RESULTS.md`).

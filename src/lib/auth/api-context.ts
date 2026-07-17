@@ -35,6 +35,7 @@ import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
 import { forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { assertAccountNotSuspended, AccountSuspendedError } from '@/lib/auth/account-status';
 
 export interface ApiKeyContext {
   /** Discriminant — lets shared logic tell key auth from cookie auth. */
@@ -103,6 +104,16 @@ export async function requireApiKey(
 
   if (scope && !hasScope(row.scopes, scope)) {
     throw forbidden(`This API key is missing the '${scope}' scope`);
+  }
+
+  // Ciclo 003-R — block keys belonging to a suspended organization.
+  try {
+    await assertAccountNotSuspended(supabaseAdmin(), row.account_id);
+  } catch (err) {
+    if (err instanceof AccountSuspendedError) {
+      throw forbidden('This organization is suspended');
+    }
+    throw err;
   }
 
   touchLastUsed(row.id);

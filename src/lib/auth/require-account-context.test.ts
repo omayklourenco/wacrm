@@ -34,7 +34,7 @@ const { requireAccountContext, UnauthorizedError, ForbiddenError } =
 
 const ACTIVE_A = {
   data: [
-    { account_id: "acct-a", name: "A", role: "admin", status: "active", is_active: true },
+    { account_id: "acct-a", name: "A", role: "admin", status: "active", is_active: true, platform_status: "active" },
   ],
   error: null,
 };
@@ -58,7 +58,7 @@ describe("requireAccountContext", () => {
       user: { id: "user-1" },
       accounts: {
         data: [
-          { account_id: "acct-a", name: "A", role: "agent", status: "active", is_active: true },
+          { account_id: "acct-a", name: "A", role: "agent", status: "active", is_active: true, platform_status: "active" },
         ],
         error: null,
       },

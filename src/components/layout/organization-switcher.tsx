@@ -97,17 +97,22 @@ export function OrganizationSwitcher() {
         {availableAccounts.map((acc) => {
           const isActive = acc.accountId === accountId;
           const isBusy = switching === acc.accountId;
+          const isSuspended = acc.platformStatus === "suspended";
           return (
             <DropdownMenuItem
               key={acc.accountId}
-              onClick={() => handleSwitch(acc.accountId)}
-              disabled={isBusy}
+              onClick={() => {
+                if (isSuspended) return;
+                void handleSwitch(acc.accountId);
+              }}
+              disabled={isBusy || isSuspended}
               className="flex items-center justify-between gap-2 text-popover-foreground focus:bg-accent focus:text-accent-foreground"
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate font-medium">{acc.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
                   {ROLE_LABEL[acc.role] ?? acc.role}
+                  {isSuspended ? " · suspensa" : ""}
                 </span>
               </span>
               {isBusy ? (
